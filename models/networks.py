@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.conv import ChebConv
+from torch_geometric.nn import ChebConv
+from torch_scatter import scatter_add
 
 from .inits import reset
-from torch_scatter import scatter_add
 
 
 def Pool(x, trans, dim=1):
