@@ -1,7 +1,9 @@
 import time
 import os
+
 import torch
 import torch.nn.functional as F
+from tqdm import tqdm
 
 
 def run(model, train_loader, test_loader, epochs, optimizer, scheduler, writer,
@@ -30,7 +32,7 @@ def train(model, optimizer, loader, device):
     model.train()
 
     total_loss = 0
-    for data in loader:
+    for data in tqdm(loader):
         optimizer.zero_grad()
         x = data.x.to(device)
         out = model(x)
@@ -46,7 +48,7 @@ def test(model, loader, device):
 
     total_loss = 0
     with torch.no_grad():
-        for i, data in enumerate(loader):
+        for data in tqdm(loader):
             x = data.x.to(device)
             pred = model(x)
             total_loss += F.l1_loss(pred, x, reduction='mean')
