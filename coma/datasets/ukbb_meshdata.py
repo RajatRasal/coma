@@ -1,4 +1,5 @@
 import os
+import pickle
 from collections import defaultdict, namedtuple
 from glob import glob
 from typing import List
@@ -13,6 +14,8 @@ from torch_geometric.transforms import Compose
 
 
 BatchWrapper = namedtuple('BatchWrapper', ['x'])
+# NOTE: Subdict function needed to be able to pickle the defaultdict
+def _subdict(): return defaultdict(str)
 
 
 class UKBBMeshDataset(Dataset):
@@ -43,8 +46,13 @@ class UKBBMeshDataset(Dataset):
     We expect that there should be 7 meshes for the left and right side of the
     brain and another mesh for the brain stem.
     """
+
+    data_sub_file = './data_subject_ids.pickle'
+    lookup_dict_file = './lookup_dict.pickle' 
+    flat_list_file = './flat_list.pickle' 
+
     def __init__(self, path: str, substructures: List[str], split: float = 0.8,
-        train: bool = True, transform: Compose = None,
+        train: bool = True, transform: Compose = None, reload_path: bool = True,
     ):
         # TODO: Reload option - if not specified, then just use cached info file is available
         super().__init__()
@@ -52,16 +60,26 @@ class UKBBMeshDataset(Dataset):
         self.substructures = sorted(substructures)
         self.transform = transform
         self.data_subject_ids = []
-        self.lookup_dict = defaultdict(lambda: defaultdict(str))
+        self.lookup_dict = defaultdict(_subdict)
         self.flat_list = []
         self.split = split
         self.train = train
+        self.reload_path = reload_path
         self.__read_path_structure()
 
     def __read_path_structure(self):
         # Find all numbers, sort them in ascending order
         # Form dictionary {no: {substr: full_path}}
         # Form flat list [fullpath]
+        if not self.reload_path:
+            with open(UKBBMeshDataset.data_sub_file, 'rb') as data_sub_file, \
+                open(UKBBMeshDataset.lookup_dict_file, 'rb') as lookup_dict_file, \
+                open(UKBBMeshDataset.flat_list_file, 'rb') as flat_list_file:
+                self.data_subject_ids = pickle.load(data_sub_file)
+                self.lookup_dict = pickle.load(lookup_dict_file)
+                self.flat_list = pickle.load(flat_list_file)
+                return
+
         data_subject_ids = sorted(
             [int(x) for x in os.listdir(self.path) if x.isdigit()]
         )
@@ -80,6 +98,13 @@ class UKBBMeshDataset(Dataset):
                     continue
                 self.lookup_dict[_id][substructure] = full_path
                 self.flat_list.append(full_path)
+
+        with open(UKBBMeshDataset.data_sub_file, 'wb') as data_sub_file, \
+            open(UKBBMeshDataset.lookup_dict_file, 'wb') as lookup_dict_file, \
+            open(UKBBMeshDataset.flat_list_file, 'wb') as flat_list_file:
+            pickle.dump(self.data_subject_ids, data_sub_file)
+            pickle.dump(self.lookup_dict, lookup_dict_file)
+            pickle.dump(self.flat_list, flat_list_file)
 
     def get_data_subject_ids(self):
         return self.data_subject_ids
