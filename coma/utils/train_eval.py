@@ -28,7 +28,7 @@ def run(model, train_loader, test_loader, epochs, optimizer, scheduler, writer,
         writer.save_checkpoint(model, optimizer, scheduler, epoch)
 
 
-def train(model, optimizer, loader, device):
+def train(model, optimizer, loader, device, loss_f=F.l1_loss):
     model.train()
 
     total_loss = 0
@@ -36,7 +36,8 @@ def train(model, optimizer, loader, device):
         optimizer.zero_grad()
         x = data.x.to(device)
         out = model(x)
-        loss = F.l1_loss(out, x, reduction='mean')
+        loss = loss_f(out, x) 
+        # loss = F.l1_loss(out, x, reduction='mean')
         loss.backward()
         total_loss += loss.item()
         optimizer.step()

@@ -67,8 +67,7 @@ def vertex_quadrics(mesh):
 
         # Compute normalized plane equation for that face
         vert_idxs = mesh.f[f_idx]
-        verts = np.hstack((mesh.v[vert_idxs], np.array([1, 1,
-                                                        1]).reshape(-1, 1)))
+        verts = np.hstack((mesh.v[vert_idxs], np.array([1, 1, 1]).reshape(-1, 1)))
         u, s, v = np.linalg.svd(verts)
         eq = v[-1, :].reshape(-1, 1)
         eq = eq / (np.linalg.norm(eq[0:3]))
@@ -87,8 +86,7 @@ def setup_deformation_transfer(source, target, use_normals=False):
     coeffs_v = np.zeros(3 * target.v.shape[0])
     coeffs_n = np.zeros(3 * target.v.shape[0])
 
-    nearest_faces, nearest_parts, nearest_vertices = source.compute_aabb_tree(
-    ).nearest(target.v, True)
+    nearest_faces, nearest_parts, nearest_vertices = source.compute_aabb_tree().nearest(target.v, True)
     nearest_faces = nearest_faces.ravel().astype(np.int64)
     nearest_parts = nearest_parts.ravel().astype(np.int64)
     nearest_vertices = nearest_vertices.ravel()
@@ -295,8 +293,7 @@ def generate_transform_matrices(mesh, factors):
         new_mesh = Mesh(v=new_mesh_v, f=ds_f)
         F.append(new_mesh.f)
         M.append(new_mesh)
-        A.append(
-            get_vert_connectivity(new_mesh.v, new_mesh.f).astype('float32'))
+        A.append(get_vert_connectivity(new_mesh.v, new_mesh.f).astype('float32'))
         U.append(setup_deformation_transfer(M[-1], M[-2]).astype('float32'))
 
     return M, A, D, U, F

@@ -52,10 +52,12 @@ class UKBBMeshDataset(Dataset):
         features_df: pd.DataFrame, feature_name_map: Dict[str, str],
         split: float = 0.8, data_subject_id_colname: str = 'eid',
         train: bool = True, transform: Compose = None, reload_path: bool = True,
+        cache_path: str = '.'
     ):
         # TODO: Reload option - if not specified, then just use cached info file is available
         super().__init__()
         self.path = path
+        self.cache_path = cache_path
         self.substructures = sorted(substructures)
         self.transform = transform
         self.data_subject_ids = []
@@ -74,9 +76,9 @@ class UKBBMeshDataset(Dataset):
         )
 
         pickle_files = '_'.join(substructures)
-        self.data_sub_file = f'./data_subject_ids_{pickle_files}.pickle'
-        self.lookup_dict_file = f'./lookup_dict_{pickle_files}.pickle' 
-        self.flat_list_file = f'./flat_list_{pickle_files}.pickle' 
+        self.data_sub_file = f'{self.cache_path}/data_subject_ids_{pickle_files}.pickle'
+        self.lookup_dict_file = f'{self.cache_path}/lookup_dict_{pickle_files}.pickle' 
+        self.flat_list_file = f'{self.cache_path}/flat_list_{pickle_files}.pickle' 
         self.__read_path_structure()
 
     def __read_path_structure(self):

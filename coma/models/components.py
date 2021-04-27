@@ -1,8 +1,10 @@
 import psbody.mesh
+import pyro.distributions as dist
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import ChebConv
+from torch import Tensor
+from torch_geometric.nn import ChebConv, GCNConv
 from torch_geometric.data import Data
 from torch_scatter import scatter_add
 
@@ -77,7 +79,7 @@ class Deblock(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(self, in_channels, out_channels, latent_channels, edge_index,
-        down_transform, up_transform, K, num_verts, n_blocks, **kwargs
+        down_transform, up_transform, K, n_blocks, **kwargs
     ):
         super(Encoder, self).__init__()
         self.in_channels = in_channels
@@ -85,7 +87,7 @@ class Encoder(nn.Module):
         self.edge_index = edge_index
         self.down_transform = down_transform
         self.up_transform = up_transform
-        self.num_verts = num_verts
+        self.num_verts = self.down_transform[-1].size(0)
 
         self.layers = nn.ModuleList()
 
@@ -99,6 +101,9 @@ class Encoder(nn.Module):
         )
 
         self.reset_parameters()
+
+    def get_output_shape(self):
+        return 
 
     def reset_parameters(self):
         for name, param in self.named_parameters():
@@ -119,7 +124,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(self, in_channels, out_channels, latent_channels, edge_index,
-        down_transform, up_transform, K, num_verts, n_blocks, **kwargs
+        down_transform, up_transform, K, n_blocks, **kwargs
     ):
         super(Decoder, self).__init__()
         self.in_channels = in_channels
@@ -127,7 +132,7 @@ class Decoder(nn.Module):
         self.edge_index = edge_index
         self.down_transform = down_transform
         self.up_transform = up_transform
-        self.num_verts = num_verts
+        self.num_verts = self.down_transform[-1].size(0)
 
         self.layers = nn.ModuleList()
 
@@ -140,12 +145,15 @@ class Decoder(nn.Module):
             self.layers.append(block)
 
         # reconstruction
-        # print(self.in_channels)
+        print(self.in_channels)
         self.layers.append(
             ChebConv(self.out_channels[0], self.in_channels, K, **kwargs)
         )
 
         self.reset_parameters()
+
+    def get_output_shape(self):
+        pass
 
     def reset_parameters(self):
         for name, param in self.named_parameters():
@@ -170,126 +178,56 @@ class Decoder(nn.Module):
         return x
 
 
-class AE(nn.Module):
-    def __init__(self, in_channels, out_channels, latent_channels, edge_index,
-                 down_transform, up_transform, K, n_blocks, Encoder, Decoder, **kwargs):
-        super(AE, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.edge_index = edge_index
-        self.down_transform = down_transform
-        self.up_transform = up_transform
-        # self.num_vert used in the last and the first layer of encoder and decoder
-        self.num_verts = self.down_transform[-1].size(0)
-
-        self.encoder = Encoder(in_channels, out_channels, latent_channels,
-            edge_index, down_transform, up_transform, K, self.num_verts, n_blocks, **kwargs,
-        )
-        self.decoder = Decoder(in_channels, out_channels, latent_channels,
-            edge_index, down_transform, up_transform, K, self.num_verts, n_blocks, **kwargs,
-        )
-
-        # encoder
-        """
-        self.en_layers = nn.ModuleList()
-        for idx in range(len(out_channels)):
-            if idx == 0:
-                self.en_layers.append(
-                    Enblock(in_channels, out_channels[idx], K, **kwargs))
-            else:
-                self.en_layers.append(
-                    Enblock(out_channels[idx - 1], out_channels[idx], K,
-                            **kwargs))
-        self.en_layers.append(
-            nn.Linear(self.num_vert * out_channels[-1], latent_channels))
-        """
-
-        # decoder
-        """
-        self.de_layers = nn.ModuleList()
-        self.de_layers.append(
-            nn.Linear(latent_channels, self.num_vert * out_channels[-1]))
-        for idx in range(len(out_channels)):
-            if idx == 0:
-                self.de_layers.append(
-                    Deblock(out_channels[-idx - 1], out_channels[-idx - 1], K,
-                            **kwargs))
-            else:
-                self.de_layers.append(
-                    Deblock(out_channels[-idx], out_channels[-idx - 1], K,
-                            **kwargs))
-        # reconstruction
-        self.de_layers.append(
-            ChebConv(out_channels[0], in_channels, K, **kwargs))
-        """
-
-        self.reset_parameters()
-
-    @classmethod
-    def init_coma(cls, template: Data, device: str, **kwargs):
-        mesh = psbody.mesh.Mesh(
-            v=template.pos.detach().cpu().numpy(),
-            f=template.face.T.detach().cpu().numpy(),
-        )
-        ds_factors = [4, 4, 4, 4]
-        _, A, D, U, F = mesh_sampling.generate_transform_matrices(mesh, ds_factors)
-        tmp = {'face': F, 'adj': A, 'down_transform': D, 'up_transform': U}
-
-        edge_index_list = [
-            utils.to_edge_index(adj).to(device)
-            for adj in tmp['adj']
-        ]
-        down_transform_list = [
-            utils.to_sparse(down_transform).to(device)
-            for down_transform in tmp['down_transform']
-        ]
-        up_transform_list = [
-            utils.to_sparse(up_transform).to(device)
-            for up_transform in tmp['up_transform']
-        ]
-
-        return cls(
-            **kwargs,
-            edge_index=edge_index_list,
-            down_transform=down_transform_list,
-            up_transform=up_transform_list,
-        ).to(device)
-
-    def reset_parameters(self):
-        for name, param in self.named_parameters():
-            if 'bias' in name:
-                nn.init.constant_(param, 0)
-            else:
-                nn.init.xavier_uniform_(param)
-
+class DeepIndepNormal(nn.Module):
     """
-    def encoder(self, x):
-        for i, layer in enumerate(self.en_layers):
-            if i != len(self.en_layers) - 1:
-                x = layer(x, self.edge_index[i], self.down_transform[i])
-            else:
-                x = x.view(-1, layer.weight.size(1))
-                x = layer(x)
-        return x
-
-    def decoder(self, x):
-        num_layers = len(self.de_layers)
-        num_deblocks = num_layers - 2
-        for i, layer in enumerate(self.de_layers):
-            if i == 0:
-                x = layer(x)
-                x = x.view(-1, self.num_vert, self.out_channels[-1])
-            elif i != num_layers - 1:
-                x = layer(x, self.edge_index[num_deblocks - i],
-                          self.up_transform[num_deblocks - i])
-            else:
-                # last layer
-                x = layer(x, self.edge_index[0])
-        return x
+    Code taken from DeepSCM repo
     """
-
+    def __init__(self, hidden_dim: int, out_dim: int):
+        super(DeepIndepNormal, self).__init__()
+        self.mean_head = nn.Linear(hidden_dim, out_dim)
+        self.logvar_head = nn.Linear(hidden_dim, out_dim)
+    
     def forward(self, x):
-        # x - batched feature matrix
-        z = self.encoder(x)
-        out = self.decoder(z)
-        return out
+        mean = self.mean_head(x)
+        logvar = self.logvar_head(x)
+        std = (0.5 * logvar).exp()
+        return mean, std 
+    
+    def predict(self, x) -> dist.Distribution:
+        mean, logvar = self(x)
+        std = (.5 * logvar).exp()
+        event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
+
+
+class GCNDeepIndepNormal(nn.Module):
+    """
+    Code taken from DeepSCM repo
+    """
+    def __init__(self, hidden_channels: int, out_channels: int):
+        super(GCNDeepIndepNormal, self).__init__()
+        self.mean_head = GCNConv(hidden_channels, out_channels)
+        self.logvar_head = GCNConv(hidden_channels, out_channels)
+    
+    def forward(self, x):
+        mean = self.mean_head(x)
+        logvar = self.logvar_head(x)
+        return mean, logvar
+    
+    def predict(self, x) -> dist.Distribution:
+        mean, logvar = self(x)
+        std = (.5 * logvar).exp()
+        event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
+
+
+class Lambda(torch.nn.Module):
+    """
+    Code taken from DeepSCM repo
+    """
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+    
+    def forward(self, x):
+        return self.func(x)
