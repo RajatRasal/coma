@@ -1,11 +1,14 @@
 import torch
 import pandas as pd
+from pyro.infer import SVI, Trace_ELBO
+from pyro.optim import Adam
 
 from coma.models import init_coma
 from coma.datasets.ukbb_meshdata import (
 	UKBBMeshDataset, VerticesDataLoader, get_data_from_polydata
 )
-from coma.utils import train_eval, transforms
+from coma.utils import transforms
+from coma.utils.train_eval_svi import run_svi
 
 
 preprocessor = transforms.get_transforms()
@@ -102,13 +105,16 @@ print()
 print(model)
 print()
 
-optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-
 total_params = sum(p.numel() for p in model.parameters())
 print()
 print(total_params)
 print()
 
-trial_graph = torch.ones((5, 642, 3))
-res = model.generate(trial_graph.to(device).double())
-print(res.shape)
+# trial_graph = torch.ones((5, 642, 3))
+# res = model.generate(trial_graph.to(device).double())
+
+optimiser = Adam({'lr': 1e-3})
+loss = Trace_ELBO(num_particles=3)
+svi = SVI(model.model, model.guide, optimiser, loss=loss)
+
+run_svi(svi, train_dataloader, val_dataloader, 10, device)

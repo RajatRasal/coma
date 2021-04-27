@@ -145,7 +145,6 @@ class Decoder(nn.Module):
             self.layers.append(block)
 
         # reconstruction
-        print(self.in_channels)
         self.layers.append(
             ChebConv(self.out_channels[0], self.in_channels, K, **kwargs)
         )
@@ -193,32 +192,34 @@ class DeepIndepNormal(nn.Module):
         std = (0.5 * logvar).exp()
         return mean, std 
     
-    def predict(self, x) -> dist.Distribution:
-        mean, logvar = self(x)
-        std = (.5 * logvar).exp()
-        event_ndim = len(mean.shape[1:])  # keep only batch dimension
-        return dist.Normal(mean, std).to_event(event_ndim)
+    # def predict(self, x) -> dist.Distribution:
+    #     mean, logvar = self(x)
+    #     std = (.5 * logvar).exp()
+    #     event_ndim = len(mean.shape[1:])  # keep only batch dimension
+    #     return dist.Normal(mean, std).to_event(event_ndim)
 
 
 class GCNDeepIndepNormal(nn.Module):
     """
     Code taken from DeepSCM repo
     """
-    def __init__(self, hidden_channels: int, out_channels: int):
+    def __init__(self, hidden_channels: int, out_channels: int, edge_index: Tensor):
         super(GCNDeepIndepNormal, self).__init__()
         self.mean_head = GCNConv(hidden_channels, out_channels)
         self.logvar_head = GCNConv(hidden_channels, out_channels)
+        self.edge_index = edge_index
     
     def forward(self, x):
-        mean = self.mean_head(x)
-        logvar = self.logvar_head(x)
-        return mean, logvar
+        mean = self.mean_head(x, self.edge_index)
+        logvar = self.logvar_head(x, self.edge_index)
+        std = (0.5 * logvar).exp()
+        return mean, std 
     
-    def predict(self, x) -> dist.Distribution:
-        mean, logvar = self(x)
-        std = (.5 * logvar).exp()
-        event_ndim = len(mean.shape[1:])  # keep only batch dimension
-        return dist.Normal(mean, std).to_event(event_ndim)
+    # def predict(self, x) -> dist.Distribution:
+    #     mean, logvar = self(x)
+    #     std = (.5 * logvar).exp()
+    #     event_ndim = len(mean.shape[1:])  # keep only batch dimension
+    #     return dist.Normal(mean, std).to_event(event_ndim)
 
 
 class Lambda(torch.nn.Module):
