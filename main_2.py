@@ -5,7 +5,7 @@ from pyro.optim import Adam
 
 from coma.models import init_coma
 from coma.datasets.ukbb_meshdata import (
-	UKBBMeshDataset, VerticesDataLoader, get_data_from_polydata
+    UKBBMeshDataset, VerticesDataLoader, get_data_from_polydata
 )
 from coma.utils import transforms
 from coma.utils.train_eval_svi import run_svi
@@ -62,7 +62,7 @@ train_dataset, val_dataset = torch.utils.data.random_split(
     generator=torch.Generator().manual_seed(42),
 )
 
-batch_size = 10
+batch_size = 50
 train_dataloader = VerticesDataLoader(
     train_dataset,
     batch_size=batch_size,
@@ -110,11 +110,22 @@ print()
 print(total_params)
 print()
 
-# trial_graph = torch.ones((5, 642, 3))
-# res = model.generate(trial_graph.to(device).double())
+trial_graph = torch.ones((5, 642, 3))
+res = model.generate(trial_graph.to(device).double(), device)
 
-optimiser = Adam({'lr': 1e-3})
+optimiser = Adam({'lr': 1e-5})
 loss = Trace_ELBO(num_particles=3)
 svi = SVI(model.model, model.guide, optimiser, loss=loss)
 
-run_svi(svi, train_dataloader, val_dataloader, 10, device)
+"""
+VAE - 50 epochs, lr = 1e-5, batch_size = 10
+"""
+
+for i in range(50):
+    run_svi(svi, train_dataloader, val_dataloader, 1, device)
+    for batch in val_dataloader:
+        pred = model.generate(batch.x.to(device)[0].view(1, 642, 3), device)
+        print(batch.x[0])
+        print(pred)
+        print()
+        break

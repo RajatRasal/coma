@@ -5,7 +5,9 @@ import torch
 import torch.nn as nn
 import pyro.distributions as dist
 from torch import Tensor
-from pyro.distributions.transforms import neural_autoregressive
+from pyro.distributions.transforms import (
+    neural_autoregressive, ComposeTransform, AffineTransform,
+)
 
 from .components import Lambda, DeepIndepNormal, GCNDeepIndepNormal
 
@@ -13,13 +15,13 @@ from .components import Lambda, DeepIndepNormal, GCNDeepIndepNormal
 class VAE(nn.Module):
 
     def __init__(self, encoder: nn.Module, decoder: nn.Module, latent_dim: int, 
-        decoder_output: str = 'GCN',
+        decoder_output: str = 'linear',
     ):
         super(VAE, self).__init__()
 
         self.latent_dim = latent_dim
-        self.encoder_unit = encoder
-        self.decoder_unit = decoder
+        # self.encoder_unit = encoder
+        # self.decoder_unit = decoder
 
         # enc_out_shape = encoder.get_output_shape()
         # self.dec_out_shape = decoder.get_output_shape()
@@ -29,18 +31,18 @@ class VAE(nn.Module):
 
         # TODO: Remove hard coding of shape dimensions 
         self.encoder = nn.Sequential(
-            self.encoder_unit,
+            encoder,
             DeepIndepNormal(self.latent_dim, self.latent_dim),
         )
         if decoder_output == 'linear':
             self.decoder = nn.Sequential(
-                self.decoder_unit,
+                decoder,
                 Lambda(lambda x: x.view(x.shape[0], -1)),
                 DeepIndepNormal(642 * 3, 642 * 3),
             )
         elif decoder_output == 'GCN':
             self.decoder = nn.Sequential(
-                self.decoder_unit,
+                decoder,
                 # TODO: Remove the edge_index hack
                 GCNDeepIndepNormal(3, 3, self.encoder_unit.edge_index[0]),
                 Lambda(lambda params: (
@@ -96,11 +98,19 @@ class VAE(nn.Module):
         z_dist = dist.Normal(kwargs['mean'], kwargs['std'])
         return z_dist.to_event(1)
 
-    def generate(self, x):
+    def generate(self, x, device):
+        # TODO: Remove hard coding
         mean, std = self.encoder(x)
         z_dist = self.transformed_latent_dist(mean=mean, std=std)
         z = z_dist.sample()
-        recon = self.decoder_unit(z)
+        mean, std = self.decoder(z)
+        x_reparam_transform = AffineTransform(mean, std, 1)
+        x_base_dist = dist.Normal(
+            torch.zeros([x.shape[0], 642 * 3], requires_grad=False).to(device),
+            torch.ones([x.shape[0], 642 * 3], requires_grad=False).to(device),
+        ).to_event(1)
+        x_dist = dist.TransformedDistribution(x_base_dist, ComposeTransform([x_reparam_transform]))
+        recon = pyro.sample('x', x_dist).view(x.shape[0], 642, 3)
         return recon
 
 
