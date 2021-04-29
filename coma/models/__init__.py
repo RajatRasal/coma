@@ -7,7 +7,9 @@ from .components import Encoder, Decoder
 from coma.utils import mesh_sampling, utils
 
 
-def init_coma(model_type: str, template: Data, device: str, pooling_factor: int = 4, **kwargs):
+def init_coma(model_type: str, template: Data, device: str, pooling_factor: int = 4,
+    decoder_output: str = 'normal', **kwargs
+):
     mesh = psbody.mesh.Mesh(
         v=template.pos.detach().cpu().numpy(),
         f=template.face.T.detach().cpu().numpy(),
@@ -49,7 +51,7 @@ def init_coma(model_type: str, template: Data, device: str, pooling_factor: int 
         'vae_svi': VAE_SVI,
         'vae_iaf_svi': VAE_IAF_SVI,
     }
-    model = models[model_type](encoder, decoder, latent_dim)
+    model = models[model_type](encoder, decoder, latent_dim, decoder_output)
     model = model.to(device)
     return model
 

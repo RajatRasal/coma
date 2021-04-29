@@ -24,6 +24,7 @@ parser.add_argument('--pooling_factor', type=int, default=4)
 parser.add_argument('--in_channels', type=int, default=3)
 parser.add_argument('--K', type=int, default=10)
 parser.add_argument('--particles', type=int, default=3)
+parser.add_argument('--decoder_output', type=str, default='normal')
 
 # optimizer hyperparmeters
 parser.add_argument('--lr', type=float, default=1e-5)
@@ -128,12 +129,14 @@ latent_channels = args.latent_channels
 K = args.K
 n_blocks = 1
 pooling_factor = args.pooling_factor
+decoder_output = args.decoder_output
 
 model = init_coma(
     'vae_svi',
     template,
     device,
     pooling_factor,
+    decoder_output,
     in_channels=in_channels,
     out_channels=out_channels,
     latent_channels=latent_channels,
@@ -152,6 +155,7 @@ print()
 # Sanity Check
 trial_graph = torch.ones((5, 642, 3))
 res = model.generate(trial_graph.to(device).double(), device)
+print(f'Sanity check, output shape: {res.shape}')
 
 optimiser = Adam({'lr': args.lr})
 loss = Trace_ELBO(num_particles=args.particles)
@@ -171,9 +175,9 @@ VAE - 50 epochs, lr = 1e-3, batch_size = 50 particles = 3
 Next up:
 VAE - 50 epochs, lr = 1e-3, batch_size = 50, with MVN decoder
 """
-print(args.epochs)
+print(f'Total epochs: {args.epochs}')
 for i in range(args.epochs):
-    print(i)
+    print('Epoch no:', i)
     run_svi(svi, train_dataloader, val_dataloader, 1, device)
     for batch in val_dataloader:
         pred = model.generate(batch.x.to(device)[0].view(1, 642, 3), device)

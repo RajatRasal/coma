@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from torch.distributions import constraints
+from torch.distributions.transforms import Transform
 from torch_geometric.nn import ChebConv, GCNConv
 from torch_geometric.data import Data
 from torch_scatter import scatter_add
@@ -181,45 +183,80 @@ class DeepIndepNormal(nn.Module):
     """
     Code taken from DeepSCM repo
     """
-    def __init__(self, hidden_dim: int, out_dim: int):
+    def __init__(self, backbone: nn.Module, hidden_dim: int, out_dim: int):
         super(DeepIndepNormal, self).__init__()
+        self.backbone = backbone
         self.mean_head = nn.Linear(hidden_dim, out_dim)
         self.logvar_head = nn.Linear(hidden_dim, out_dim)
+
+    def __logvar_to_std(self, logvar):
+        return (0.5 * logvar).exp()
     
     def forward(self, x):
+        x = self.backbone(x)
         mean = self.mean_head(x)
         logvar = self.logvar_head(x)
-        std = (0.5 * logvar).exp()
+        std = self.__logvar_to_std(logvar)
         return mean, std 
     
-    # def predict(self, x) -> dist.Distribution:
-    #     mean, logvar = self(x)
-    #     std = (.5 * logvar).exp()
-    #     event_ndim = len(mean.shape[1:])  # keep only batch dimension
-    #     return dist.Normal(mean, std).to_event(event_ndim)
+    def predict(self, x, event_ndim=None) -> dist.Normal:
+        mean, std = self(x)
+        if event_ndim is None:
+            event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
+
+
+class DeepLowRankMultivariateNormal(nn.Module):
+    """
+    Code taken from DeepSCM repo
+    """
+    def __init__(self, backbone: nn.Module, hidden_dim: int, out_dim: int, rank: int):
+        super().__init__()
+        self.backbone = backbone
+        self.out_dim = out_dim
+        self.rank = rank
+        self.mean_head = nn.Linear(hidden_dim, out_dim)
+        self.factor_head = nn.Linear(hidden_dim, out_dim * rank)
+        self.logdiag_head = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, x):
+        h = self.backbone(x)
+        mean = self.mean_head(h)
+        diag = self.logdiag_head(h).exp()
+        factors = self.factor_head(h).view(x.shape[0], self.out_dim, self.rank)
+        return mean, diag, factors
+
+    def predict(self, x) -> dist.LowRankMultivariateNormal:
+        mean, diag, factors = self(x)
+        return dist.LowRankMultivariateNormal(mean, factors, diag)
 
 
 class GCNDeepIndepNormal(nn.Module):
     """
     Code taken from DeepSCM repo
     """
-    def __init__(self, hidden_channels: int, out_channels: int, edge_index: Tensor):
+    def __init__(self, backbone: nn.Module, hidden_channels: int, out_channels: int, edge_index: Tensor):
         super(GCNDeepIndepNormal, self).__init__()
+        self.backbone = backbone
         self.mean_head = GCNConv(hidden_channels, out_channels)
         self.logvar_head = GCNConv(hidden_channels, out_channels)
         self.edge_index = edge_index
-    
+
+    def __logvar_to_std(self, logvar):
+        return (0.5 * logvar).exp()
+
     def forward(self, x):
+        x = self.backbone(x)
         mean = self.mean_head(x, self.edge_index)
         logvar = self.logvar_head(x, self.edge_index)
-        std = (0.5 * logvar).exp()
+        std = self.__logvar_to_std(logvar)
         return mean, std 
     
-    # def predict(self, x) -> dist.Distribution:
-    #     mean, logvar = self(x)
-    #     std = (.5 * logvar).exp()
-    #     event_ndim = len(mean.shape[1:])  # keep only batch dimension
-    #     return dist.Normal(mean, std).to_event(event_ndim)
+    def predict(self, x, event_ndim=None) -> dist.Normal:
+        mean, std = self(x)
+        if event_ndim is None:
+            event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
 
 
 class Lambda(torch.nn.Module):
