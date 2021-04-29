@@ -1,4 +1,7 @@
 import torch
+import torch.backends.cudnn as cudnn
+import argparse
+import numpy as np
 import pandas as pd
 from pyro.infer import SVI, Trace_ELBO
 from pyro.optim import Adam
@@ -11,11 +14,49 @@ from coma.utils import transforms
 from coma.utils.train_eval_svi import run_svi
 
 
+parser = argparse.ArgumentParser(description='mesh autoencoder')
+parser.add_argument('--out_dir', type=str, default='experiments')
+
+# network hyperparameters
+parser.add_argument('--out_channels', nargs='+', default=[32, 32, 32, 64], type=int)
+parser.add_argument('--latent_channels', type=int, default=8)
+parser.add_argument('--pooling_factor', type=int, default=4)
+parser.add_argument('--in_channels', type=int, default=3)
+parser.add_argument('--K', type=int, default=10)
+parser.add_argument('--particles', type=int, default=3)
+
+# optimizer hyperparmeters
+parser.add_argument('--lr', type=float, default=1e-5)
+parser.add_argument('--lr_decay', type=float, default=1.0)
+
+# training hyperparameters
+parser.add_argument('--train_test_split', type=float, default=0.8)
+parser.add_argument('--val_split', type=float, default=0.1)
+parser.add_argument('--batch_size', type=int, default=10)
+parser.add_argument('--epochs', type=int, default=300)
+
+# others
+parser.add_argument('--seed', type=int, default=42)
+
+args = parser.parse_args()
+
+# device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# deterministic
+seed = args.seed
+np.random.seed(seed)
+torch.manual_seed(seed)
+cudnn.benchmark = False
+cudnn.deterministic = True
+
+# Preprocessor
 preprocessor = transforms.get_transforms()
 
+# Load Dataset
 mesh_path = '/vol/biomedic3/bglocker/brainshapes'
 cache_path = '/vol/bitbucket/rrr2417/deepscm/deepscm/experiments/medical_meshes/notebooks'
-split = 0.8
+split = args.train_test_split
 substructures = ['BrStem']
 feature_name_map = {
     '31-0.0': 'Sex',
@@ -35,7 +76,7 @@ total_train_dataset = UKBBMeshDataset(
     reload_path=False,
     features_df=metadata_df,
     feature_name_map=feature_name_map,
-    cache_path = cache_path,
+    cache_path=cache_path,
 )
 test_dataset = UKBBMeshDataset(
     mesh_path,
@@ -46,12 +87,10 @@ test_dataset = UKBBMeshDataset(
     reload_path=False,
     features_df=metadata_df,
     feature_name_map=feature_name_map,
-    cache_path = cache_path,
+    cache_path=cache_path,
 )
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-val_split = 0.1
+val_split = args.val_split
 total_train_length = len(total_train_dataset)
 val_length = int(val_split * total_train_length)
 train_length = total_train_length - val_length
@@ -59,10 +98,10 @@ train_length = total_train_length - val_length
 train_dataset, val_dataset = torch.utils.data.random_split(
     total_train_dataset,
     lengths=[train_length, val_length],
-    generator=torch.Generator().manual_seed(42),
+    generator=torch.Generator().manual_seed(seed),
 )
 
-batch_size = 50
+batch_size = args.batch_size
 train_dataloader = VerticesDataLoader(
     train_dataset,
     batch_size=batch_size,
@@ -70,7 +109,7 @@ train_dataloader = VerticesDataLoader(
 )
 val_dataloader = VerticesDataLoader(
     val_dataset,
-    batch_size=20,
+    batch_size=10,
     shuffle=False,
 )
 test_dataloader = VerticesDataLoader(
@@ -84,14 +123,14 @@ train_data = get_data_from_polydata(train_plotting_point)
 template = train_data
 
 in_channels = 3
-out_channels = [32, 32, 32, 64]
-latent_channels = 20
-K = 10
+out_channels = args.out_channels 
+latent_channels = args.latent_channels
+K = args.K
 n_blocks = 1
-pooling_factor = 4
+pooling_factor = args.pooling_factor
 
 model = init_coma(
-    'vae_iaf_svi',
+    'vae_svi',
     template,
     device,
     pooling_factor,
@@ -110,18 +149,31 @@ print()
 print(total_params)
 print()
 
+# Sanity Check
 trial_graph = torch.ones((5, 642, 3))
 res = model.generate(trial_graph.to(device).double(), device)
 
-optimiser = Adam({'lr': 1e-5})
-loss = Trace_ELBO(num_particles=3)
+optimiser = Adam({'lr': args.lr})
+loss = Trace_ELBO(num_particles=args.particles)
 svi = SVI(model.model, model.guide, optimiser, loss=loss)
 
-"""
-VAE - 50 epochs, lr = 1e-5, batch_size = 10
-"""
+# TODO: Save hyperparameters
+# Save model weights
 
-for i in range(50):
+"""
+GCN encoder is severely underparametrised. Linear is needed.
+
+VAE - 50 epochs, lr = 1e-5, batch_size = 10
+VAE_IAF with 3 IAFs lr = 1e-5 batch = 50 particles = 3
+    Too many IAF units becomes unstable and diverges > 3
+VAE - 50 epochs, lr = 1e-3, batch_size = 50 particles = 3
+
+Next up:
+VAE - 50 epochs, lr = 1e-3, batch_size = 50, with MVN decoder
+"""
+print(args.epochs)
+for i in range(args.epochs):
+    print(i)
     run_svi(svi, train_dataloader, val_dataloader, 1, device)
     for batch in val_dataloader:
         pred = model.generate(batch.x.to(device)[0].view(1, 642, 3), device)
