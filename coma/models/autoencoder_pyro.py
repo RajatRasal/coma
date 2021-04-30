@@ -13,13 +13,14 @@ from pyro.distributions.transforms import (
 
 from .components import (
     Lambda, DeepIndepNormal, DeepLowRankMultivariateNormal,
+    DeepMultivariateNormal,
 )
 
 
 class VAE(nn.Module):
 
     def __init__(self, encoder: nn.Module, decoder: nn.Module, latent_dim: int, 
-        decoder_output: str = 'normal',
+        decoder_output: str = 'normal', mvn_rank: int = 10,
     ):
         super(VAE, self).__init__()
 
@@ -34,8 +35,11 @@ class VAE(nn.Module):
         if decoder_output == 'normal':
             # TODO: Remove hard coding of shape dimensions 
             self.decoder = DeepIndepNormal(decoder_flatten, 642 * 3, 642 * 3)
+        elif decoder_output == 'low_rank_mvn':
+            print(f'MVN RANK: {mvn_rank}')
+            self.decoder = DeepLowRankMultivariateNormal(decoder_flatten, 642 * 3, 642 * 3, mvn_rank)
         elif decoder_output == 'mvn':
-            self.decoder = DeepLowRankMultivariateNormal(decoder_flatten, 642 * 3, 642 * 3, 10)
+            self.decoder = DeepMultivariateNormal(decoder_flatten, 642 * 3, 642 * 3)
         else:
             raise Exception('Unknown decoder output type')
 
@@ -74,28 +78,36 @@ class VAE(nn.Module):
             z_dist = self.encoder.predict(x, 1)
             pyro.sample('latent', z_dist)
 
-    def generate(self, x, device):
+    def generate(self, x, num_particles):
         z_dist = self.encoder.predict(x)
         z = z_dist.sample()
-        # TODO: Change this to zeros_like and ones_like
-        # [x.shape[0], 642 * 3], requires_grad=False).to(device).double(),
-        # torch.ones([x.shape[0], 642 * 3], requires_grad=False).to(device).double(),
+        x_pred_dist = self.decoder.predict(z)
+
         x_base_dist = dist.Normal(
             torch.zeros_like(x, requires_grad=False).view(x.shape[0], -1),
             torch.ones_like(x, requires_grad=False).view(x.shape[0], -1),
         ).to_event(1)
-        x_pred_dist = self.decoder.predict(z)
 
         if self.decoder_output == 'normal':
             transform = AffineTransform(x_pred_dist.mean, x_pred_dist.stddev, 1)
-        elif self.decoder_output == 'mvn':
+        elif self.decoder_output == 'low_rank_mvn':
+            # print(x_pred_dist.loc.shape)
+            # print(x_pred_dist.loc)
+            # print(x_pred_dist.scale_tril.shape)
+            # print(x_pred_dist.scale_tril)
             transform = LowerCholeskyAffine(x_pred_dist.loc, x_pred_dist.scale_tril)
         else:
             raise Exception('Unknown decoder output')
                     
         x_dist = dist.TransformedDistribution(x_base_dist, ComposeTransform([transform]))
-        recon = pyro.sample('x', x_dist).view(x.shape[0], 642, 3)
-        return recon
+
+        recons = []
+        for i in range(num_particles):
+            # print(i)
+            recon = pyro.sample('x', x_dist).view(x.shape[0], 642, 3)
+            # print(recon.shape)
+            recons.append(recon)
+        return torch.stack(recons).mean(0)
 
 
 class VAE_IAF(VAE):

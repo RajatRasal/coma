@@ -223,12 +223,45 @@ class DeepLowRankMultivariateNormal(nn.Module):
         h = self.backbone(x)
         mean = self.mean_head(h)
         diag = self.logdiag_head(h).exp()
+        # (0.5 * logvar).exp()
         factors = self.factor_head(h).view(x.shape[0], self.out_dim, self.rank)
         return mean, diag, factors
 
     def predict(self, x) -> dist.LowRankMultivariateNormal:
         mean, diag, factors = self(x)
         return dist.LowRankMultivariateNormal(mean, factors, diag)
+
+
+class DeepMultivariateNormal(nn.Module):
+    """
+    Code taken from DeepSCM repo
+    """
+    def __init__(self, backbone: nn.Module, hidden_dim: int, out_dim: int):
+        super().__init__()
+        self.backbone = backbone
+        cov_lower_dim = (out_dim * (out_dim - 1)) // 2
+        self.mean_head = nn.Linear(hidden_dim, out_dim)
+        self.lower_head = nn.Linear(hidden_dim, cov_lower_dim)
+        self.logdiag_head = nn.Linear(hidden_dim, out_dim)
+
+    def __assemble_tril(self, diag: torch.Tensor, lower_vec: torch.Tensor) -> torch.Tensor:
+        dim = diag.shape[-1]
+        L = torch.diag_embed(diag)  # L is lower-triangular
+        i, j = torch.tril_indices(dim, dim, offset=-1)
+        L[..., i, j] = lower_vec
+        return L
+
+    def forward(self, x):
+        h = self.backbone(x)
+        mean = self.mean_head(h)
+        diag = self.logdiag_head(h).exp()
+        lower = self.lower_head(h)
+        scale_tril = self.__assemble_tril(diag, lower)
+        return mean, scale_tril 
+
+    def predict(self, x) -> dist.MultivariateNormal:
+        mean, scale_tril = self(x)
+        return dist.MultivariateNormal(mean, scale_tril=scale_tril) 
 
 
 class GCNDeepIndepNormal(nn.Module):
