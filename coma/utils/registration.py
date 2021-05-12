@@ -21,10 +21,10 @@ class RigidRegistration(RegistrationBase):
         self.fixed_mean_centered, self.fixed_mean = self.mean_centering(fixed_image)
         self.fixed_vertices = fixed_image.shape[0]
         self.fixed_dim = fixed_image.shape[1]
-        
+
     def get_fixed_mean_centering(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.fixed_mean_centered, self.fixed_mean
-        
+
     def mean_centering(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         # TODO: Accept a density weighting for each pixel in the image
         mean = np.mean(image, axis=0)
@@ -33,14 +33,11 @@ class RigidRegistration(RegistrationBase):
     
     def calc_rotation_matrix(self, moving_image_mean_centered: np.ndarray, moving_mean: np.ndarray = None) -> Tuple[np.ndarray, np.ndarray]:
         """
-        https://johnwlambert.github.io/icp/
+        Adapted from https://johnwlambert.github.io/icp/
 
-        2-D or 3-D registration with known correspondences.
-        Registration occurs in the zero centered coordinate system, and then
-        must be transported back.
-        
+        Procrustes Analysis: https://en.wikipedia.org/wiki/Procrustes_analysis
         Kabsch Algorithm: https://en.wikipedia.org/wiki/Kabsch_algorithm
-        
+
         Args:
             moving_image: Mean centered array of shape (N, D) -- Point Cloud to Align (source)
 
@@ -51,18 +48,18 @@ class RigidRegistration(RegistrationBase):
         assert moving_image_mean_centered.shape == (self.fixed_vertices, self.fixed_dim)
         
         cross_cov = moving_image_mean_centered.T @ self.fixed_mean_centered
-        u, _, v_t = np.linalg.svd(cross_cov)
+        U, _, V_T = np.linalg.svd(cross_cov)
         
-        # Check for reflection case
-        s = np.eye(self.fixed_dim)
-        det = np.linalg.det(u) * np.linalg.det(v_t.T)
+        # TODO: Elaborate on reflection case
+        S = np.eye(self.fixed_dim)
+        det = np.linalg.det(U) * np.linalg.det(V_T.T)
         if not np.isclose(det, 1.):
             s[self.fixed_dim - 1, self.fixed_dim - 1] = -1
         
-        r = u @ s @ v_t
-        t = self.fixed_mean - moving_mean @ r
+        rot = U @ S @ V_T
+        trans = self.fixed_mean - moving_mean @ rot
         
-        return r, t
+        return rot, trans
     
     def manual_rotations(self, moving_image: np.ndarray) -> np.ndarray:
         for theta in range(5, 360, 5):

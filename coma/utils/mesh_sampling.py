@@ -15,6 +15,29 @@ def col(A):
     return A.reshape((-1, 1))
 
 
+def get_face_normals(mesh, faces):
+    normals = np.zeros((faces.shape[0], 3))
+
+    for i, vert_idxs in enumerate(faces):
+        a, b, c = mesh[vert_idxs]
+        normal = np.cross(b - a, c - a)
+        unit_normal = normal / normal.sum()
+        normals[i] = unit_normal
+    
+    return normals
+
+
+def face_normals_similarity(ref, normals):
+    """
+    Cosine similarity between a batch of normals and the 
+    reference normals.
+
+    ref: Reference normals for each face in a mesh (Faces, 3)
+    normals: batch of face normals (N, Faces, 3)
+    """
+    return (normals * ref).sum(axis=2).mean(axis=0)
+
+
 def get_vert_connectivity(mesh_v, mesh_f):
     """Returns a sparse matrix (of size #verts x #verts) where each nonzero
     element indicates a neighborhood relation. For example, if there is a
