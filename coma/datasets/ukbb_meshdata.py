@@ -172,6 +172,15 @@ class UKBBMeshDataset(Dataset):
         mesh = self.transform(mesh) if self.transform else mesh
         return mesh, features
 
+    def get_metrics(self):
+        return self.features_df_renamed
+
+    def get_features_by_index(self, index):
+        path = self.flat_list[index]
+        data_subject_id = self.get_id_from_vtk_path(path)
+        features = self.lookup_features(int(data_subject_id))
+        return features
+
 
 def get_data_from_polydata(polydata):
     faces = polydata.faces.reshape(-1, 4)[:, 1:].T
