@@ -158,18 +158,25 @@ def plot_mesh_pyvista(
     polydata: pv.PolyData,
     # vertices: np.ndarray,
     # triangles: np.ndarray,
-    figsize: Tuple[int, int] = (1024, 300),
     rotations: List[Tuple[int, int, int]] = [(0, 0, 0)],
     vertexcolors: List[int] = [],
     vertexscalar: str = '',
     cmap: str = 'YlGnBu',
+    title: str = '',
+    scalar_bar_idx: int = 0,
     **mesh_kwargs,
 ):
     shape = plotter.shape
-    assert shape[0] > 0 and shape[1] > 0
-    assert shape[0] * shape[1] == len(rotations)
+    if len(shape) == 1:
+        assert shape[0] > 0
+        assert shape[0] == len(rotations)
+        subp_idx = [(x, ) for x in range(shape[0])]
+    else:
+        assert shape[0] > 0 and shape[1] > 0
+        assert shape[0] * shape[1] == len(rotations)
+        subp_idx = product(range(shape[0]), range(shape[1]))
 
-    if vertexscalar and vertexcolors:
+    if vertexscalar and vertexcolors is not None:
         polydata[vertexscalar] = vertexcolors
 
     cmap = plt.cm.get_cmap(cmap)
@@ -180,10 +187,10 @@ def plot_mesh_pyvista(
         'show_scalar_bar': False,
         **mesh_kwargs,
     }
-    if vertexscalar and vertexcolors:
+    if vertexscalar and vertexcolors is not None:
         mesh_kwargs['scalars'] = vertexscalar
 
-    for subp, rots in zip(product(range(shape[0]), range(shape[1])), rotations):
+    for i, (subp, rots) in enumerate(zip(subp_idx, rotations)):
         x, y, z = rots
         plotter.subplot(*subp)
         poly_copy = polydata.copy()
@@ -194,9 +201,75 @@ def plot_mesh_pyvista(
             poly_copy,
             **mesh_kwargs,
         )
-        if rots == rotations[-1]:
+        if i == 0:
+            plotter.add_title(title, font_size=5)
+        if i == scalar_bar_idx:
             plotter.add_scalar_bar(label_font_size=10, position_x=0.85)
 
+def plot_meshes_pyvista(
+    plotter: pv.Plotter,
+    polydatas: List[pv.PolyData],
+    rotations: List[Tuple[int, int, int]],
+    vertexcolors: np.ndarray = None,
+    vertexscalar: str = '',
+    cmap: str = 'YlGnBu',
+    titles: str = '',
+    scalar_bar_idx: int = -1,
+    scalar_bar_kwargs: dict = dict(label_font_size=15, position_x=0.85), 
+    mesh_kwargs: dict = dict(),
+    title_kwargs: dict = dict(),
+):
+    """
+    Plot multiple meshes, each with their own rotation.
+    
+    Need a separate matrix of colours for each polydata.
+    Should be one colour per vertex of the mesh.
+    """
+    shape = plotter.shape
+    if len(shape) == 1:
+        assert shape[0] > 0
+        assert shape[0] == len(polydatas)
+        subp_idx = [(x, ) for x in range(shape[0])]
+    else:
+        assert shape[0] > 0 and shape[1] > 0
+        assert shape[0] * shape[1] == len(polydatas)
+        subp_idx = product(range(shape[0]), range(shape[1]))
+
+    if vertexscalar and vertexcolors is not None:
+        assert vertexcolors.shape[0] == len(polydatas)
+
+    cmap = plt.cm.get_cmap(cmap)
+
+    mesh_kwargs = {
+        'cmap': cmap,
+        'flip_scalars': True,
+        'show_scalar_bar': False,
+        **mesh_kwargs,
+    }
+    if vertexscalar and vertexcolors is not None:
+        mesh_kwargs['scalars'] = vertexscalar
+        if 'clim' not in mesh_kwargs:
+            mesh_kwargs['clim'] = [vertexcolors.min(), vertexcolors.max()]
+
+    if isinstance(titles, str):
+        titles = [titles] * len(polydatas)
+    elif isinstance(titles, list):
+        assert len(titles) == len(polydatas)
+
+    for i, (subp, rots, polydata) in enumerate(zip(subp_idx, rotations, polydatas)):
+        x, y, z = rots
+        plotter.subplot(*subp)
+        poly_copy = polydata.copy()
+        if vertexscalar and vertexcolors is not None:
+            poly_copy[vertexscalar] = vertexcolors[i]
+        poly_copy.rotate_x(x)
+        poly_copy.rotate_y(y)
+        poly_copy.rotate_z(z)
+        plotter.add_mesh(poly_copy, **mesh_kwargs)
+        if titles[i]:
+            plotter.add_title(titles[i], **title_kwargs)  # font_size=10, font='arial')
+        if i == scalar_bar_idx:
+            plotter.add_scalar_bar(**scalar_bar_kwargs)
 
 def plot_wireframe_and_meshes(
     vertices: np.ndarray,
