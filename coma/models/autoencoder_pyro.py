@@ -20,26 +20,28 @@ from .components import (
 class VAE(nn.Module):
 
     def __init__(self, encoder: nn.Module, decoder: nn.Module, latent_dim: int, 
-        decoder_output: str = 'normal', mvn_rank: int = 10,
+        decoder_output: str = 'normal', mvn_rank: int = 10, shape: int = 642,
     ):
         super(VAE, self).__init__()
 
         self.latent_dim = latent_dim
         self.decoder_output = decoder_output
+        self.shape = shape
 
         self.encoder = DeepIndepNormal(encoder, self.latent_dim, latent_dim)
         decoder_flatten = nn.Sequential(
             decoder,
             Lambda(lambda x: x.view(x.shape[0], -1)),
         )
+        
         if decoder_output == 'normal':
             # TODO: Remove hard coding of shape dimensions 
-            self.decoder = DeepIndepNormal(decoder_flatten, 642 * 3, 642 * 3)
+            self.decoder = DeepIndepNormal(decoder_flatten, shape * 3, shape * 3)
         elif decoder_output == 'low_rank_mvn':
             print(f'MVN RANK: {mvn_rank}')
-            self.decoder = DeepLowRankMultivariateNormal(decoder_flatten, 642 * 3, 642 * 3, mvn_rank)
+            self.decoder = DeepLowRankMultivariateNormal(decoder_flatten, shape * 3, shape * 3, mvn_rank)
         elif decoder_output == 'mvn':
-            self.decoder = DeepMultivariateNormal(decoder_flatten, 642 * 3, 642 * 3)
+            self.decoder = DeepMultivariateNormal(decoder_flatten, shape * 3, shape * 3)
         else:
             raise Exception('Unknown decoder output type')
 
@@ -63,11 +65,11 @@ class VAE(nn.Module):
             # Define prior distribution p(z) = N(0, I)
             z_loc = x.new_zeros(torch.Size((x.shape[0], self.latent_dim)))
             z_scale = x.new_ones(torch.Size((x.shape[0], self.latent_dim)))
-            z = pyro.sample('latent', dist.Normal(z_loc, z_scale).to_event(1))
+            z = pyro.sample('z', dist.Normal(z_loc, z_scale).to_event(1))
             # Compute p(x|z)
             out_dist = self.decoder.predict(z)  # .to_event(1)
             # TODO: Use pyro condition
-            pyro.sample('obs', out_dist, obs=x.view(x.shape[0], -1))
+            pyro.sample('x', out_dist, obs=x.view(x.shape[0], -1))
 
     def guide(self, x):
         """
@@ -76,7 +78,7 @@ class VAE(nn.Module):
         pyro.module('encoder', self.encoder)
         with pyro.plate('data', x.shape[0]):
             z_dist = self.encoder.predict(x, 1)
-            pyro.sample('latent', z_dist)
+            pyro.sample('z', z_dist)
 
     def generate(self, x, num_particles):
         z_dist = self.encoder.predict(x)
@@ -103,9 +105,7 @@ class VAE(nn.Module):
 
         recons = []
         for i in range(num_particles):
-            # print(i)
-            recon = pyro.sample('x', x_dist).view(x.shape[0], 642, 3)
-            # print(recon.shape)
+            recon = pyro.sample('x', x_dist).view(x.shape[0], self.shape, 3)
             recons.append(recon)
         return torch.stack(recons).mean(0)
 
@@ -127,12 +127,12 @@ class VAE_IAF(VAE):
         pyro.module('encoder', self.encoder)
         pyro.module('iaf', nn.ModuleList(self.iaf))
 
-        with pyro.plate('data', x.shape[0]):
+        with pyro.plate('x', x.shape[0]):
             mean, std = self.encoder(x)
             # print(f'mean: {mean.shape}, std: {std.shape}') 
             transformed_z_dist = self.transformed_latent_dist(mean=mean, std=std)
             # print(transformed_z_dist)
-            pyro.sample('latent', transformed_z_dist)
+            pyro.sample('z', transformed_z_dist)
 
     def transformed_latent_dist(self, **kwargs):
         latent_base_dist = dist.Normal(kwargs['mean'], kwargs['std']).to_event(1)
