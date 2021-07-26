@@ -25,12 +25,17 @@ where the *sparse* sampling matrix <img src="svgs/9180e00e196978aa798f62467e585a
 The real magic of our implemtation happens in the body of ``models.networks.Pool``.  Here, we need to perform batch matrix multiplication on GPU w.r.t the sampling operation described above. Because dense matrix multiplication is really slow, we implement **sparse batch matrix multiplication** via scattering add node feature vectors corresponds to *cluster nodes* across a batch of input node feature matrices.
 
 ## Installation
-The code is developed using Python 3.6 on Ubuntu 16.04. The models were trained and tested with NVIDIA 2080 Ti.
-* [Pytorch](https://pytorch.org/) (1.3.0)
-* [Pytorch Geometric](https://github.com/rusty1s/pytorch_geometric) (1.3.0)
+The code is developed using Python 3.8 on Ubuntu 20.04. The models were trained and tested with NVIDIA GeForce GTX TITAN X.
+* [Pytorch](https://pytorch.org/) (1.7.1)
+* [Pytorch Geometric](https://github.com/rusty1s/pytorch_geometric) (1.6.3)
 * [OpenMesh](https://github.com/nmaxwell/OpenMesh-Python) (1.1.3)
 * [MPI-IS Mesh](https://github.com/MPI-IS/mesh): We suggest to install this library from the source.
 * [tqdm](https://github.com/tqdm/tqdm)
+
+Install Pytorch and Pytorch-Geometric with the following command:
+```
+pip install torch-scatter==2.0.6 torch-sparse==0.6.9 torch-cluster==1.5.9 torch-spline-conv==1.2.1 torch-geometric==1.6.3 -f https://pytorch-geometric.com/whl/torch-1.7.1+cu102.html
+```
 
 ## Interpolation Experiment
 Following the same split as described in the paper, the dataset is split in training and test samples with a ratio of 9:1. Run the script below to train and evaluet the model. The checkpoints of each epoch is saved in the corresponding output folder (specifed by the vairable ``exp_name``).  After training, it outputs the result of the "Mean Error with the Standard Deviation" as well as "Median Error", which are saved in the file ``euc_error.txt``.
