@@ -9,13 +9,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class MeshWriter:
+
     def __init__(self, args, template: pv.PolyData):
         self.args = args
         self.template = template
 
         self.faces = torch.tensor(self.template.faces.reshape(-1, 4)[:, 1:])
 
-        out_dir = self.args.out_dir
+        out_dir = f'{self.args.out_dir}/{self.args.exp_name}'
 
         if os.path.lexists(out_dir):
             versions = os.listdir(out_dir)
@@ -46,10 +47,6 @@ class MeshWriter:
             print(k, v)
             self.writer.add_scalar(f'{section}/{k}', v, epoch)
 
-    # def write_meshes(self, epoch, verts, train=False):
-    #     for i in range(len(verts)):
-    #         self.write_mesh(epoch, verts[i], train)
-
     def write_meshes(self, epoch, verts, train=False):
         """
         Vertices should correspond to faces provided in the constructor
@@ -70,7 +67,6 @@ class MeshWriter:
             'material': material_config,
             'camera': camera_config,
         }
-        print(self.faces.unsqueeze(0).shape)
 
         self.writer.add_mesh(
             section,
@@ -84,16 +80,3 @@ class MeshWriter:
     def save_model_checkpoint(self, model, epoch):
         path = os.path.join(self.exp_dir, 'checkpoint.pt')
         torch.save({'epoch': epoch, 'model_state_dict': model.state_dict()}, path)
-
-    # def save_checkpoint(self, model, optimizer, scheduler, epoch):
-    #     torch.save(
-    #         {
-    #             'epoch': epoch,
-    #             'model_state_dict': model.state_dict(),
-    #             'optimizer_state_dict': optimizer.state_dict(),
-    #             'scheduler_state_dict': scheduler.state_dict(),
-    #         },
-    #         os.path.join(
-    #             self.args.checkpoints_dir,
-    #             'checkpoint_{:03d}.pt'.format(epoch))
-    #         )
