@@ -25,16 +25,22 @@ where the *sparse* sampling matrix <img src="svgs/9180e00e196978aa798f62467e585a
 The real magic of our implemtation happens in the body of ``models.networks.Pool``.  Here, we need to perform batch matrix multiplication on GPU w.r.t the sampling operation described above. Because dense matrix multiplication is really slow, we implement **sparse batch matrix multiplication** via scattering add node feature vectors corresponds to *cluster nodes* across a batch of input node feature matrices.
 
 ## Installation
-The code is developed using Python 3.8 on Ubuntu 20.04. The models were trained and tested with NVIDIA GeForce GTX TITAN X.
+The code is developed using Python 3.8 on Ubuntu 20.04. The models were trained and tested with NVIDIA GeForce GTX TITAN X with cuda version 10.2.
 * [Pytorch](https://pytorch.org/) (1.7.1)
 * [Pytorch Geometric](https://github.com/rusty1s/pytorch_geometric) (1.6.3)
 * [OpenMesh](https://github.com/nmaxwell/OpenMesh-Python) (1.1.3)
 * [MPI-IS Mesh](https://github.com/MPI-IS/mesh): We suggest to install this library from the source.
 * [tqdm](https://github.com/tqdm/tqdm)
+* [Pytorch3d](https://github.com/facebookresearch/pytorch3d) (0.4.0)
 
-Install Pytorch and Pytorch-Geometric with the following command:
+Install Pytorch-Geometric with the following command:
 ```
 pip install torch-scatter==2.0.6 torch-sparse==0.6.9 torch-cluster==1.5.9 torch-spline-conv==1.2.1 torch-geometric==1.6.3 -f https://pytorch-geometric.com/whl/torch-1.7.1+cu102.html
+```
+
+Install Pytorch3d with the following command:
+```
+pip install pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py38_cu102_pyt171/download.html
 ```
 
 ## Interpolation Experiment

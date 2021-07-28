@@ -18,6 +18,7 @@ Pillow==8.2.0
 pip==20.0.2             
 pytorch-lightning==1.1.2              
 pytorch3d
+pyro-ppl==1.5.1
 pyvista==0.29.1             
 scikit-image==0.18.1             
 scikit-learn==0.24.0             
@@ -31,11 +32,12 @@ tensorflow-estimator==2.4.0
 tensorflow-gpu==2.4.1              
 tensorflow-graphics-gpu==1.0.0              
 torch==1.7.1              
+torchvision==0.8.2              
 torch-scatter==2.0.6              
 torch-sparse==0.6.9              
 torch-cluster==1.5.9              
 torch-spline-conv==1.2.1              
 torch-geometric==1.6.3              
 torchcontrib==0.0.2              
-torchvision==0.8.2              
 tqdm==4.58.0             
+trimesh==3.9.24
