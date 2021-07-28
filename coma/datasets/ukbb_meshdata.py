@@ -201,7 +201,9 @@ class VerticesDataLoader(DataLoader):
 
     def __init__(self, dataset, batch_size=1, shuffle=False, **kwargs):
 
-        def collate_fn_for_ukbb_meshes_pipeline(data_list: List[Tuple[torch.Tensor, Tuple[int, ...]]]) -> torch.Tensor:
+        def collate_fn_for_ukbb_meshes_pipeline(
+            data_list: List[Tuple[torch.Tensor, Tuple[int, ...]]]
+        ) -> torch.Tensor:
             batch = torch.vstack([data[0].double() for data in data_list])
             features = pd.concat([data[1] for data in data_list])
             return BatchWrapper(x=batch, features=features)
