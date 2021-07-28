@@ -1,4 +1,3 @@
-import psbody.mesh
 import pyro.distributions as dist
 import torch
 import torch.nn as nn
@@ -194,10 +193,49 @@ class DeepIndepNormal(nn.Module):
     
     def forward(self, x):
         x = self.backbone(x)
+        # print(x.shape)
         mean = self.mean_head(x)
         logvar = self.logvar_head(x)
         std = self.__logvar_to_std(logvar)
+        # print(mean.shape, std.shape)
         return mean, std 
+    
+    def predict(self, x, event_ndim=None) -> dist.Normal:
+        mean, std = self(x)
+        if event_ndim is None:
+            event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
+
+
+class DeepConv1dIndepNormal(nn.Module):
+    """
+    Code taken from DeepSCM repo
+    """
+    def __init__(self, backbone: nn.Module, hidden_dim: int, out_dim: int,
+        filters: int, kernel_size: int, padding: int,
+    ):
+        super(DeepConv1dIndepNormal, self).__init__()
+        self.backbone = backbone
+        self.mean_head = nn.Sequential(
+            nn.Conv1d(1, filters, kernel_size, padding=padding),
+            nn.Conv1d(filters, 1, 1),
+        )
+        self.logvar_head = nn.Sequential( 
+            nn.Conv1d(1, filters, kernel_size, padding=padding),
+            nn.Conv1d(filters, 1, 1),
+        )
+
+    def __logvar_to_std(self, logvar):
+        return (0.5 * logvar).exp()
+    
+    def forward(self, x):
+        x = self.backbone(x)
+        shape = x.shape
+        x = x.reshape(shape[0], 1, shape[1])
+        mean = self.mean_head(x).reshape(shape[0], shape[1])
+        logvar = self.logvar_head(x).reshape(shape[0], shape[1])
+        std = self.__logvar_to_std(logvar)
+        return mean, std
     
     def predict(self, x, event_ndim=None) -> dist.Normal:
         mean, std = self(x)

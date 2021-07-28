@@ -13,14 +13,14 @@ from pyro.distributions.transforms import (
 
 from .components import (
     Lambda, DeepIndepNormal, DeepLowRankMultivariateNormal,
-    DeepMultivariateNormal,
+    DeepMultivariateNormal, DeepConv1dIndepNormal,
 )
 
 
 class VAE(nn.Module):
 
     def __init__(self, encoder: nn.Module, decoder: nn.Module, latent_dim: int, 
-        decoder_output: str = 'normal', mvn_rank: int = 10, shape: int = 642,
+        decoder_output: str = 'normal', shape: int = 642, **kwargs,
     ):
         super(VAE, self).__init__()
 
@@ -28,7 +28,10 @@ class VAE(nn.Module):
         self.decoder_output = decoder_output
         self.shape = shape
 
-        self.encoder = DeepIndepNormal(encoder, self.latent_dim, latent_dim)
+        self.encoder = DeepIndepNormal(
+            encoder,
+            self.latent_dim, self.latent_dim
+        )
         decoder_flatten = nn.Sequential(
             decoder,
             Lambda(lambda x: x.view(x.shape[0], -1)),
@@ -36,12 +39,30 @@ class VAE(nn.Module):
         
         if decoder_output == 'normal':
             # TODO: Remove hard coding of shape dimensions 
-            self.decoder = DeepIndepNormal(decoder_flatten, shape * 3, shape * 3)
+            self.decoder = DeepIndepNormal(
+                decoder_flatten,
+                shape * 3, shape * 3,
+            )
+        elif decoder_output == 'conv_normal':
+            self.decoder = DeepConv1dIndepNormal(
+                decoder_flatten,
+                shape * 3, shape * 3,
+                kwargs['filters'],
+                kwargs['kernel_size'],
+                kwargs['padding'],
+            )
         elif decoder_output == 'low_rank_mvn':
             print(f'MVN RANK: {mvn_rank}')
-            self.decoder = DeepLowRankMultivariateNormal(decoder_flatten, shape * 3, shape * 3, mvn_rank)
+            self.decoder = DeepLowRankMultivariateNormal(
+                decoder_flatten,
+                shape * 3, shape * 3,
+                kwargs['mvn_rank'],
+            )
         elif decoder_output == 'mvn':
-            self.decoder = DeepMultivariateNormal(decoder_flatten, shape * 3, shape * 3)
+            self.decoder = DeepMultivariateNormal(
+                decoder_flatten,
+                shape * 3, shape * 3,
+            )
         else:
             raise Exception('Unknown decoder output type')
 
@@ -90,18 +111,28 @@ class VAE(nn.Module):
             torch.ones_like(x, requires_grad=False).view(x.shape[0], -1),
         ).to_event(1)
 
-        if self.decoder_output == 'normal':
-            transform = AffineTransform(x_pred_dist.mean, x_pred_dist.stddev, 1)
+        if 'normal' in self.decoder_output: 
+            transform = AffineTransform(
+                x_pred_dist.mean,
+                x_pred_dist.stddev,
+                1
+            )
         elif self.decoder_output == 'low_rank_mvn':
             # print(x_pred_dist.loc.shape)
             # print(x_pred_dist.loc)
             # print(x_pred_dist.scale_tril.shape)
             # print(x_pred_dist.scale_tril)
-            transform = LowerCholeskyAffine(x_pred_dist.loc, x_pred_dist.scale_tril)
+            transform = LowerCholeskyAffine(
+                x_pred_dist.loc,
+                x_pred_dist.scale_tril
+            )
         else:
             raise Exception('Unknown decoder output')
                     
-        x_dist = dist.TransformedDistribution(x_base_dist, ComposeTransform([transform]))
+        x_dist = dist.TransformedDistribution(
+            x_base_dist,
+            ComposeTransform([transform])
+        )
 
         recons = []
         for i in range(num_particles):

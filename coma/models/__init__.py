@@ -1,4 +1,4 @@
-import psbody.mesh
+from psbody.mesh import Mesh
 from torch_geometric.data import Data
 
 from .autoencoder_pyro import VAE as VAE_SVI, VAE_IAF as VAE_IAF_SVI
@@ -8,7 +8,7 @@ from coma.utils import mesh_sampling, utils
 
 
 def init_coma_pooling(template, pooling_factor, depth, device):
-    mesh = psbody.mesh.Mesh(
+    mesh = Mesh(
         v=template.pos.detach().cpu().numpy(),
         f=template.face.T.detach().cpu().numpy(),
     )
@@ -31,15 +31,23 @@ def init_coma_pooling(template, pooling_factor, depth, device):
     return edge_index_list, down_transform_list, up_transform_list
 
 def init_coma(
-    model_type: str, template: Data, device: str, pooling_factor: int = 4,
-    decoder_output: str = 'normal', **kwargs
+    model_type: str, template: Data, device: str, shape: int,
+    pooling_factor: int = 4, decoder_output: str = 'normal', **kwargs
 ):
     depth = len(kwargs['out_channels'])
     edge_index_list, down_transform_list, up_transform_list = init_coma_pooling(
         template, pooling_factor, depth, device,
     )
+    # low rank MVN normal 
     mvn_rank = kwargs['mvn_rank']
+    # 1D conv normal
+    filters = kwargs['filters']
+    kernel_size = kwargs['kernel_size']
+    padding = kwargs['padding']
     del kwargs['mvn_rank']
+    del kwargs['filters']
+    del kwargs['kernel_size']
+    del kwargs['padding']
 
     encoder = Encoder(
         **kwargs,
@@ -62,7 +70,9 @@ def init_coma(
         'vae_iaf_svi': VAE_IAF_SVI,
     }
     model = models[model_type](
-        encoder, decoder, latent_dim, decoder_output, mvn_rank
+        encoder, decoder, latent_dim, decoder_output, shape,
+        mvn_rank=mvn_rank, filters=filters,
+        kernel_size=kernel_size, padding=padding,
     )
     model = model.to(device)
     return model
