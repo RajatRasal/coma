@@ -13,7 +13,8 @@ from pyro.distributions.transforms import (
 
 from .components import (
     Lambda, DeepIndepNormal, DeepLowRankMultivariateNormal,
-    DeepMultivariateNormal, DeepConv1dIndepNormal,
+    DeepMultivariateNormal, DeepConv1dIndepNormal, IndepNormal,
+    IndepNormalDeepVar, IndepNormalDeepMean,
 )
 
 
@@ -38,8 +39,21 @@ class VAE(nn.Module):
         )
         
         if decoder_output == 'normal':
-            # TODO: Remove hard coding of shape dimensions 
             self.decoder = DeepIndepNormal(
+                decoder_flatten,
+                shape * 3, shape * 3,
+            )
+        elif decoder_output == '_normal':
+            self.decoder = IndepNormal(
+                decoder_flatten,
+            )
+        elif decoder_output == 'deepvar':
+            self.decoder = IndepNormalDeepVar(
+                decoder_flatten,
+                shape * 3, shape * 3,
+            )
+        elif decoder_output == 'deepmean':
+            self.decoder = IndepNormalDeepMean(
                 decoder_flatten,
                 shape * 3, shape * 3,
             )
@@ -111,7 +125,9 @@ class VAE(nn.Module):
             torch.ones_like(x, requires_grad=False).view(x.shape[0], -1),
         ).to_event(1)
 
-        if 'normal' in self.decoder_output: 
+        if 'normal' in self.decoder_output or \
+            self.decoder_output == 'deepvar' or \
+            self.decoder_output == 'deepmean': 
             transform = AffineTransform(
                 x_pred_dist.mean,
                 x_pred_dist.stddev,

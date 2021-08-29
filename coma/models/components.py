@@ -45,7 +45,7 @@ class Enblock(nn.Module):
         for layer in self.blocks:
             x = layer(x, edge_index)
             # print(x.shape)
-        out = F.elu(x)
+        out = F.elu(x, inplace=True)
         out = Pool(out, down_transform)
         return out
 
@@ -74,7 +74,7 @@ class Deblock(nn.Module):
         out = Pool(x, up_transform)
         for layer in self.blocks:
             out = layer(out, edge_index)
-        out = F.elu(out)
+        out = F.elu(out, inplace=True)
         return out
 
 
@@ -176,6 +176,67 @@ class Decoder(nn.Module):
                 # last layer
                 x = layer(x, self.edge_index[0])
         return x
+
+
+class IndepNormal(nn.Module):
+
+    def __init__(self, backbone: nn.Module):
+        super(IndepNormal, self).__init__()
+        self.backbone = backbone
+
+    def forward(self, x):
+        x = self.backbone(x)
+        return x, torch.ones_like(x)
+    
+    def predict(self, x, event_ndim=None) -> dist.Normal:
+        mean, std = self(x)
+        if event_ndim is None:
+            event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
+
+
+class IndepNormalDeepMean(nn.Module):
+
+    def __init__(self, backbone: nn.Module, hidden_dim: int, out_dim: int):
+        super(IndepNormalDeepMean, self).__init__()
+        self.backbone = backbone
+        self.mean_head = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, x):
+        x = self.backbone(x)
+        mean = self.mean_head(x)
+        # TODO: Remove harcoding of std
+        std = torch.ones_like(mean) * 1e-9 
+        return mean, std
+    
+    def predict(self, x, event_ndim=None) -> dist.Normal:
+        mean, std = self(x)
+        if event_ndim is None:
+            event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
+
+
+class IndepNormalDeepVar(nn.Module):
+
+    def __init__(self, backbone: nn.Module, hidden_dim: int, out_dim: int):
+        super(IndepNormalDeepVar, self).__init__()
+        self.backbone = backbone
+        self.logvar_head = nn.Linear(hidden_dim, out_dim)
+
+    def __logvar_to_std(self, logvar):
+        return (0.5 * logvar).exp()
+    
+    def forward(self, x):
+        x = self.backbone(x)
+        logvar = self.logvar_head(x)
+        std = self.__logvar_to_std(logvar)
+        return x, std
+    
+    def predict(self, x, event_ndim=None) -> dist.Normal:
+        mean, std = self(x)
+        if event_ndim is None:
+            event_ndim = len(mean.shape[1:])  # keep only batch dimension
+        return dist.Normal(mean, std).to_event(event_ndim)
 
 
 class DeepIndepNormal(nn.Module):

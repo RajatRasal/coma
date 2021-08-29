@@ -12,13 +12,17 @@ def run_svi(svi, model, train_loader, test_loader, epochs, scheduler, device, ou
     test_recon_no = min(test_loader.batch_size, 10)
 
     for epoch in range(1, epochs + 1):
-        train_metrics, train_recon_sample = train_eval_svi(svi, model, train_loader, device, output_particles, train=True)
+        train_metrics, train_recon_sample = train_eval_svi(
+            svi, model, train_loader, device, output_particles, train=True
+        )
         scheduler.step()
         writer.write_scalars(epoch, train=True, **train_metrics)
         writer.write_meshes(epoch, train_recon_sample[:train_recon_no], train=True)
         writer.save_model_checkpoint(model, epoch)
 
-        test_metrics, test_recon_sample = train_eval_svi(svi, model, test_loader, device, output_particles, train=False)
+        test_metrics, test_recon_sample = train_eval_svi(
+            svi, model, test_loader, device, output_particles, train=False
+        )
         writer.write_scalars(epoch, train=False, **test_metrics)
         writer.write_meshes(epoch, test_recon_sample[:test_recon_no], train=True)
 
@@ -27,9 +31,13 @@ def train_eval_svi(svi, model, loader, device, output_particles, train=True):
     for data in tqdm(loader):
         x = data.x.to(device)
         if train:
-            svi.step(x)
-        total_metrics['loss'] += svi.evaluate_loss(x)
-        metrics = {**get_svi_metrics(svi), **get_recon_metrics(model, x, output_particles)}
+            _step = svi.step(x)
+        l = svi.evaluate_loss(x)
+        total_metrics['loss'] += l 
+        metrics = {
+            **get_svi_metrics(svi),
+            **get_recon_metrics(model, x, output_particles)
+        }
         for k, v in metrics.items():
             total_metrics[k] += v
 

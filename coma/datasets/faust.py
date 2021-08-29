@@ -68,7 +68,6 @@ class FAUSTDataLoader(DataLoader):
         def collate_fn(data_list: List[Data]):
             batch = torch.vstack([data.pos for data in data_list])
             batch = batch.reshape(-1, *data_list[0].pos.shape).double()
-            print(batch.shape)
             return BatchWrapper(x=batch, features=[])
 
         super(FAUSTDataLoader, self).__init__(
