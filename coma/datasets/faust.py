@@ -77,13 +77,16 @@ BatchWrapper = namedtuple('BatchWrapper', ['x', 'pose'])
 
 class FAUSTDataLoader(DataLoader):
 
-    def __init__(self, dataset: FAUST, batch_size=1, shuffle=False, **kwargs):
+    def __init__(self, dataset: FAUST, batch_size=1, shuffle=False, onehot=False, **kwargs):
 
         def collate_fn(data_list: List[Data]):
             batch = torch.vstack([data.pos for data in data_list])
             batch = batch.reshape(-1, *data_list[0].pos.shape).double()
             pose = torch.vstack([data.pose for data in data_list])
-            pose = pose.reshape(-1, *data_list[0].pose.shape).double()
+            if onehot:
+                pose = torch.nn.functional.one_hot(pose.flatten(), num_classes=10)
+            else:
+                pose = pose.reshape(-1, *data_list[0].pose.shape).double()
             return BatchWrapper(x=batch, pose=pose)
 
         super(FAUSTDataLoader, self).__init__(
@@ -93,3 +96,10 @@ class FAUSTDataLoader(DataLoader):
             collate_fn=collate_fn,
             **kwargs,
         )
+
+
+if __name__ == '__main__':
+    d = FullFAUST('.')
+    loader = FAUSTDataLoader(d, 5, onehot=True, shuffle=True) 
+    for x in loader:
+        print(x)

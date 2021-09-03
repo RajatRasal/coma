@@ -8,13 +8,15 @@ from pyro.infer import SVI, Trace_ELBO
 from pyro.optim import StepLR
 from torch.optim import Adam
 from torch_geometric.utils import to_trimesh
+from torch_geometric.datasets import FAUST
+from torch_geometric.data import DataLoader 
 
 from coma.models import init_coma
 from coma.models.elbo import CustomELBO
 from coma.datasets.ukbb_meshdata import (
     UKBBMeshDataset, VerticesDataLoader, get_data_from_polydata
 )
-from coma.datasets.faust import FAUST, FAUSTDataLoader 
+from coma.datasets.faust import FAUSTDataLoader, FullFAUST, split_faust_by_person
 from coma.utils import writer
 from coma.utils.train_eval_svi import run_svi
 
@@ -35,7 +37,7 @@ parser.add_argument('--output_particles', type=int, default=10)
 parser.add_argument(
     '--decoder_output',
     default='normal',
-    choices=['normal', 'low_rank_mvn', 'mvn', 'conv_normal'],
+    choices=['normal', '_normal', 'low_rank_mvn', 'mvn', 'conv_normal', 'deepvar', 'deepmean'],
 )
 parser.add_argument('--mvn_rank', type=int, default=10)
 parser.add_argument('--filters', type=int, default=10)
@@ -43,7 +45,6 @@ parser.add_argument('--n_blocks', type=int, default=1)
 
 # optimizer hyperparmeters
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--lr_decay', type=float, default=1.0)
 
 # training hyperparameters
 parser.add_argument('--train_test_split', type=float, default=0.8)
@@ -57,16 +58,19 @@ parser.add_argument('--step_gamma', type=float, default=0.1)
 parser.add_argument(
     '--datasets',
     default='faust',
-    choices=['faust', 'dfaust', 'both']
+    choices=['faust', 'full_faust', 'both']
 )
 
-# others
+# 
 parser.add_argument('--seed', type=int, default=42)
+parser.add_argument('--gpu_no', type=int, default=0, choices=[0, 1])
 
 args = parser.parse_args()
 
 # device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device(f'cuda:{args.gpu_no}' if torch.cuda.is_available() else 'cpu')
+print('DEVICE')
+print(device)
 
 # deterministic
 seed = args.seed
@@ -75,29 +79,27 @@ torch.manual_seed(seed)
 cudnn.benchmark = False
 cudnn.deterministic = True
 
+batch_size = args.batch_size
+
 # Preprocessor
 # preprocessor = transforms.get_transforms()
+val_split = args.val_split
 
-# Load Dataset
-# val_split = args.val_split
-# total_train_length = len(total_train_dataset)
-# val_length = int(val_split * total_train_length)
-# train_length = total_train_length - val_length
+if args.datasets == 'faust':
+    train_dataset = FAUST('.')
+    val_dataset = FAUST('.', train=False)
+    train_dataloader = FAUSTDataLoader(train_dataset, batch_size=batch_size)
+    val_dataloader = FAUSTDataLoader(val_dataset, batch_size=batch_size)
+elif args.datasets == 'full_faust':
+    dataset = FullFAUST('.')
+    # TODO: Remove hardcoding of test person
+    train_dataset, val_dataset = split_faust_by_person(dataset, [1]) 
+    train_dataloader = FAUSTDataLoader(train_dataset, batch_size=batch_size)
+    val_dataloader = FAUSTDataLoader(val_dataset, batch_size=batch_size)
+else:
+    raise NotImplementedError('')
 
-train_dataset = FAUST('.')
-val_dataset = FAUST('.', train=False)
-
-batch_size = args.batch_size
-train_dataloader = FAUSTDataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-)
-val_dataloader = FAUSTDataLoader(
-    val_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-)
+# for DFAUST splitting. 9:1 ratio, with seed from above
 
 print('Template')
 template = train_dataset[0]
